@@ -67,6 +67,8 @@ OpenReach combines those lessons with ordinary DNS and ordinary web compatibilit
 
 - [Motivation](docs/MOTIVATION.md) — why local hosting is easy but global reachability is still unnecessarily difficult.
 - [Initial system design](docs/DESIGN.md) — naming, service identity, rendezvous, ICE, relays, browser ingress, TLS, federation, security, failure behavior, and staged implementation.
+- [Implementation plan](docs/IMPLEMENTATION_PLAN.md) — code workstreams, platform/build matrix, mobile support, CI, and phased milestones.
+- [Discovery and rendezvous](docs/DISCOVERY.md) — why durable discovery lives in DNS while live presence and ICE signaling live on the already-required relay/control edge.
 - [WebRTC comparison](docs/WEBRTC_COMPARISON.md) — what ICE/STUN/TURN already solve and what persistent named services add.
 - [Tor comparison](docs/TOR_COMPARISON.md) — what onion services teach about outbound-only reachability, identity, rendezvous, and what OpenReach deliberately does differently.
 

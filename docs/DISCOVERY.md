@@ -2,278 +2,356 @@
 
 Status: architecture refinement
 
-## 1. Question
+## 1. Goal
 
-Does OpenReach need a separately hosted service-discovery system if DNS is already hosted by globally available DNS providers?
+OpenReach should not require either the user or the OpenReach project to operate a public VPS, cloud service, or globally shared edge as a prerequisite.
 
-The proposed answer is **no, not as a separate product or mandatory infrastructure tier**.
+The minimum user-owned system is:
 
-OpenReach needs three different things that are easy to conflate:
+```text
+local applications
+      |
+      v
+OpenReach endpoint
+      |
+      +---- DNS provider API ----> authoritative DNS
+```
 
-1. **durable discovery** — what service is this name, and which providers/protocols can reach it?
-2. **live presence** — is the endpoint online right now, and which outbound session currently represents it?
-3. **connection rendezvous** — exchange short-lived connection state such as ICE offers, answers, candidates, and credentials.
+The endpoint itself performs publication, identity management, reachability probing, DNS updates, and local proxying.
 
-DNS is well suited to the first. It is a poor fit for the second and third.
+Public OpenReach infrastructure is therefore **optional capability**, not baseline ownership.
 
-The relay/control edge already required for guaranteed outbound-only reachability is a natural place for live presence and rendezvous. Therefore OpenReach does not require another separately deployed hosted discovery service.
+This creates an important distinction:
 
-## 2. DNS is the durable discovery root
+- **zero-hosting mode**: no OpenReach-hosted service is required; reachability is provided only by direct paths the Internet makes possible;
+- **assisted mode**: an optional rendezvous or relay provider is used when a network topology cannot establish the desired connection directly;
+- **universal browser mode**: a globally reachable compatibility ingress is required whenever an ordinary browser cannot directly reach the endpoint.
 
-A normal public hostname remains the root of discovery:
+OpenReach must not conceal those differences.
+
+## 2. DNS is the durable public control plane
+
+A normal DNS name remains the root of the service:
 
 ```text
 photos.example.com
 ```
 
-DNS can carry:
+OpenReach receives narrowly scoped authority to update records for the names it manages.
 
-- the stable OpenReach service identity;
-- protocol/version information;
-- one or more OpenReach provider or rendezvous entry points;
-- ordinary A/AAAA/CNAME/HTTPS records for browser compatibility;
-- provider priority/failover information;
-- future SVCB/HTTPS parameters once standardized/appropriate.
+DNS can publish durable and semi-dynamic information such as:
+
+- service identity/public key;
+- OpenReach protocol version;
+- current public IPv4/IPv6 addresses when available;
+- ports and transport descriptors;
+- public ICE/server-reflexive candidates where appropriate;
+- certificate-related records;
+- optional rendezvous/relay providers selected by the user;
+- ordinary A/AAAA/HTTPS compatibility records.
 
 Conceptually:
 
 ```text
 photos.example.com
     |
-    +-- normal web compatibility -> ingress.example.net
+    +-- service identity K
+    +-- current direct reachability
+    +-- optional assistance providers
+    `-- ordinary web records
+```
+
+DNS is already globally hosted infrastructure chosen and paid for by the domain owner. OpenReach should use it aggressively rather than creating a second global directory.
+
+## 3. What DNS can replace
+
+For a long-lived server endpoint, DNS can replace much of the service-discovery role that WebRTC applications normally implement with their own signaling server.
+
+The server side is not an unknown transient peer. It is a persistent named service.
+
+OpenReach can therefore publish server-side reachability asynchronously:
+
+```text
+OpenReach endpoint
     |
-    `-- OpenReach metadata
-          service key: K
-          providers:
-            - reach1.example.net
-            - reach2.example.net
+    | discover addresses / mappings / STUN candidates
+    |
+    v
+DNS update
+    |
+    v
+client later resolves photos.example.com
 ```
 
-The service key remains stable while provider choice, endpoint IP, home network, and active relay session change.
+That is fundamentally different from a WebRTC call where both peers appear at session time and exchange offers and candidates interactively.
 
-## 3. Why live presence should not be stored in DNS
+For direct paths that allow the client to initiate communication from the advertised server information, no separately hosted OpenReach signaling system is required.
 
-It is technically possible to update DNS frequently. DNS UPDATE exists, and hosted DNS providers expose APIs. That does not make DNS a good real-time signaling bus.
+## 4. The limit: DNS is not a bidirectional ICE signaling bus
 
-OpenReach presence may change because:
+ICE assumes that agents can exchange candidate information through signaling outside ICE.
 
-- a laptop sleeps or wakes;
-- Wi-Fi changes;
-- a mobile client moves networks;
-- NAT mappings expire;
-- an endpoint reconnects to a different edge;
-- ICE candidates change;
-- a relay fails;
-- a direct path becomes available or disappears.
-
-Publishing every such transition into authoritative DNS would interact badly with:
-
-- recursive resolver caching;
-- TTL behavior;
-- negative caching;
-- provider update latency/rate limits;
-- DNS propagation semantics;
-- the need for rapid offer/answer exchange;
-- privacy leakage from publishing ephemeral network candidates globally.
-
-DNS should therefore describe **how to enter the OpenReach system**, not every current detail of an active connection.
-
-## 4. No standalone discovery server is required
-
-The baseline can be:
+Publishing the server's candidates in DNS covers one direction well:
 
 ```text
-                   DNS
-                    |
-         name -> identity + provider
-                    |
-                    v
-              relay/control edge
-                 ^          ^
-                 |          |
-          outbound session  |
-                 |          |
-             endpoint     client
+server -> DNS -> client
 ```
 
-The endpoint maintains an authenticated outbound session to one or more selected relay/control edges.
-
-That live session itself is the presence record.
-
-A native client:
-
-1. resolves the DNS name;
-2. verifies the DNS-bound service identity;
-3. discovers one or more provider/control edges;
-4. contacts a provider edge;
-5. asks for service `K`;
-6. the edge matches `K` to the endpoint's current authenticated session;
-7. the edge brokers ICE exchange;
-8. peers move direct if ICE succeeds, otherwise the edge/associated TURN relay remains the path.
-
-There is no separate global database that must be queried between DNS and the edge.
-
-## 5. Ordinary browser flow is even simpler
-
-An unmodified browser does not understand OpenReach discovery.
-
-DNS supplies a conventional destination:
+It does not naturally provide the reverse session-time path:
 
 ```text
-photos.example.com -> compatibility ingress
+client -> server
 ```
 
-The compatibility ingress is already connected to or co-located with the control system.
+That matters for network types where successful hole punching requires the server to know the client's current candidate and transmit toward it before the NAT/firewall will admit the client's traffic.
+
+Examples include some address-dependent filtering and symmetric-NAT cases.
+
+Giving arbitrary clients write access to the user's DNS zone is not acceptable, and authoritative DNS hosting is not normally an arbitrary low-latency message queue.
+
+Therefore zero-hosting OpenReach cannot promise that every ICE topology will work.
+
+This is a physical connectivity limit, not a missing implementation trick.
+
+## 5. Zero-hosting reachability ladder
+
+The endpoint should attempt every direct mechanism available without relying on OpenReach-operated infrastructure.
+
+### A. Public IPv6
+
+If the endpoint has usable globally routed IPv6 and local/network firewall policy permits the service, publish it directly.
 
 ```text
-browser
-   |
-   v
-compatibility ingress / edge
-   |
-   | lookup live service K in local/cluster presence state
-   v
-outbound endpoint session
+client ----------------------> endpoint
 ```
 
-Again, no separately hosted discovery tier is necessary.
+### B. Public IPv4
 
-## 6. What still has to be hosted
+If the host has public IPv4 reachability, publish and maintain it dynamically through DNS.
 
-DNS alone cannot guarantee reachability behind arbitrary CGNAT because some globally reachable node must accept the first connection.
+### C. Explicit router mapping
 
-At least one public OpenReach provider therefore needs to host some combination of:
+Attempt supported mappings opportunistically:
 
-- relay/control edge;
-- TURN/STUN service;
-- ordinary-browser ingress;
-- provider metadata/health endpoint.
+- PCP;
+- NAT-PMP;
+- UPnP IGD.
 
-These can initially be one deployment artifact.
+Success creates a directly publishable endpoint. Failure is normal and requires no user intervention.
 
-The architectural goal is not **zero hosted infrastructure**. It is:
+### D. STUN-discovered server-reflexive path
 
-> Host only the connectivity machinery that cannot live behind the user's NAT; keep naming under DNS and keep application compute/state on the endpoint.
+The endpoint may use STUN to learn how it is represented externally and publish appropriate short-lived reachability metadata.
 
-## 7. Presence can be ephemeral and mostly memory-resident
+STUN itself is a tiny generic Internet service and need not be operated by the OpenReach project. OpenReach should support configurable STUN services and standard discovery.
 
-A control edge does not necessarily require a large durable service database.
+Some NAT/filtering combinations allow remote clients to connect using this information directly; others do not.
 
-For baseline operation it can derive presence from active authenticated sessions:
+### E. Direct client-assisted negotiation
+
+An OpenReach-aware client can try all advertised candidates and protocol-specific connectivity checks.
+
+Where incoming checks reach the endpoint, peer-reflexive information can also be learned dynamically.
+
+This still requires no OpenReach cloud.
+
+### F. Assistance provider
+
+Only if direct establishment cannot work does the system need a third party capable of rendezvous, relay, or both.
+
+That provider is not inherently OpenReach-operated.
+
+It may be:
+
+- a commercial TURN provider;
+- an ISP-provided service;
+- a DNS/hosting provider that offers compatible rendezvous/relay functionality;
+- an organization or employer service;
+- a community provider;
+- the user's own infrastructure if they already have it;
+- any future interoperable OpenReach provider.
+
+OpenReach defines interoperability with assistance providers; it does not promise to subsidize them.
+
+## 6. Reachability classes
+
+OpenReach should expose the actual capability obtained for each publication rather than flatten everything into "online".
+
+Suggested states:
 
 ```text
-service key K -> active endpoint connection object
+DIRECT
+  globally reachable without OpenReach assistance
+
+DIRECT_NATIVE_ONLY
+  reachable directly by OpenReach-aware clients, but not ordinary clients
+
+ASSISTED
+  requires a configured rendezvous/relay provider
+
+BROWSER_ASSISTED
+  ordinary browsers require a compatibility ingress
+
+LOCAL_ONLY
+  currently no viable Internet path
 ```
 
-If the process dies, the endpoint reconnects and re-registers.
+The UI can explain why and what optional step would improve reachability.
 
-Durable state can be minimized to:
-
-- provider accounts/quotas if a provider chooses to have them;
-- revocations;
-- optional publication policy;
-- operational abuse records.
-
-Service ownership itself remains grounded in DNS + cryptographic identity, rather than in the provider's database.
-
-A multi-node provider will need distributed ephemeral presence or deterministic routing so that an incoming request reaches the edge holding the endpoint session. That is an implementation concern of the provider, not a new Internet-wide discovery service.
-
-## 8. Provider discovery
-
-Provider entry points themselves should be discoverable using existing DNS mechanisms whenever possible.
-
-Candidates include:
-
-- SRV records for protocol-specific endpoints;
-- SVCB-style service bindings;
-- namespaced TXT records during experimentation;
-- standard STUN/TURN DNS discovery where those protocols are used directly.
-
-OpenReach should prefer standards-compatible records rather than require a proprietary global directory.
-
-## 9. DNS security and service-key binding
-
-If DNS is the authority binding a human-readable name to service key `K`, spoofing that binding matters.
-
-The design should support progressively stronger verification:
-
-1. normal DNS plus Web PKI for the compatibility web path;
-2. DNSSEC validation for OpenReach-aware clients when available;
-3. service-key continuity/pinning after first trusted resolution;
-4. well-defined key rotation signed by the old key and/or authorized through DNS;
-5. possible DANE/TLSA integration where it materially improves the design.
-
-DNSSEC should not be required for initial deployability because adoption is incomplete, but the protocol must not assume unsigned DNS is cryptographically authoritative by itself.
-
-## 10. Multi-provider operation
-
-DNS can list several providers while the endpoint maintains outbound sessions to more than one:
+Example:
 
 ```text
-DNS: service K
-  provider A priority 10
-  provider B priority 20
-
-endpoint -> A
-endpoint -> B
+photos.example.com
+Online: direct IPv6
+Browser access: yes
+Hosted OpenReach infrastructure: none
 ```
 
-A native client can try providers according to policy/priority.
-
-For browser compatibility, DNS/HTTPS records, anycast, or normal load-balancing techniques can direct traffic to available ingress.
-
-Provider failover therefore does not require moving the service identity or application.
-
-## 11. Recommended v1 architecture
-
-Keep the first deployment deliberately compact:
+or:
 
 ```text
-                     authoritative DNS
-                           |
-             +-------------+-------------+
-             |                           |
-      ordinary browser              OpenReach client
-             |                           |
-             v                           v
-      +------------------------------------------------+
-      |       OpenReach relay/control/ingress edge      |
-      |                                                |
-      |  browser ingress | rendezvous | STUN/TURN*     |
-      +------------------------+-----------------------+
-                               ^
-                               |
-                       outbound session
-                               |
-                            endpoint
-                               |
-                         local service
+home.example.com
+Online: native OpenReach clients only
+Reason: NAT traversal succeeds only with client participation
+Browser access: unavailable without an ingress provider
+Hosted OpenReach infrastructure: none
 ```
 
-`*` STUN/TURN may be separate standard daemons operationally while remaining part of the same provider role.
+## 7. Ordinary browser compatibility remains the hard boundary
 
-This is sufficient to prove the product without creating a standalone service-discovery database/API.
-
-## 12. Future decomposition
-
-At scale, provider components can separate:
+An unmodified browser opening:
 
 ```text
-DNS
- |
- v
-provider entry point
- |
- +-- rendezvous/control cluster
- +-- TURN relays
- +-- browser ingress edges
- +-- abuse/account service
+https://photos.example.com
 ```
 
-That is operational decomposition, not an additional architectural dependency for users.
+performs ordinary DNS resolution and then connects to a conventional IP endpoint.
 
-## 13. Design rule
+If the user's endpoint is directly reachable, this works with zero OpenReach hosting.
 
-> Durable identity and provider discovery belong in DNS. Live presence and connection negotiation belong on the already-required outbound-connected relay/control edge.
+If it is not directly reachable, DNS cannot make the browser perform OpenReach rendezvous or NAT hole punching.
 
-This keeps OpenReach dependent on as little new hosted infrastructure as possible without abusing DNS as a real-time signaling system.
+In that case there are only two choices:
+
+1. browser compatibility is unavailable for that network configuration; or
+2. the user selects a compatible public ingress provider.
+
+OpenReach should not silently turn option 2 into a mandatory OpenReach-operated cloud service.
+
+## 8. User-selected assistance is analogous to DNS hosting
+
+The product model should resemble domain/DNS selection rather than SaaS lock-in.
+
+A user may already choose:
+
+```text
+registrar:      provider A
+DNS hosting:    provider B
+OpenReach aid:  none
+```
+
+If their topology later needs assistance:
+
+```text
+registrar:      provider A
+DNS hosting:    provider B
+rendezvous:     provider C
+relay:          provider D
+```
+
+Those roles may collapse into one provider but must remain protocol-level roles, not one required account system.
+
+DNS records can advertise which optional providers the publication uses.
+
+## 9. No-provider startup path
+
+A first-run OpenReach installation should not ask for an OpenReach account.
+
+The setup path should be:
+
+1. create or import a service identity;
+2. connect a DNS provider or configure delegated dynamic-DNS authority;
+3. select one or more local applications/ports;
+4. assign public DNS names;
+5. probe local and external network capabilities;
+6. publish the best direct records OpenReach can establish;
+7. report the resulting reachability class;
+8. optionally offer compatible assistance providers only if required for capabilities the user wants.
+
+The user should be able to stop at step 7 with a fully functioning zero-hosting deployment whenever their network permits it.
+
+## 10. DNS credential model
+
+OpenReach should avoid asking for registrar-wide credentials.
+
+Preferred setup mechanisms, in order of isolation, include:
+
+1. provider OAuth with record/zone-scoped permission;
+2. provider API token scoped to one zone or subdomain;
+3. delegated sub-zone whose credentials belong only to OpenReach;
+4. RFC 2136 dynamic-update credentials scoped to the OpenReach names;
+5. manual initial delegation followed by automatic operation.
+
+The endpoint should store credentials using the native OS secret store.
+
+## 11. Dynamic DNS data lifecycle
+
+Not all records need the same update cadence.
+
+### Durable
+
+- service public key;
+- publication policy/version;
+- delegated authority.
+
+### Network-change driven
+
+- A/AAAA addresses;
+- direct transport endpoints;
+- explicit NAT mappings.
+
+### Short-lived
+
+- server-reflexive candidates;
+- temporary connection descriptors.
+
+Short-lived records need appropriately low TTLs and conservative update behavior. OpenReach should measure real DNS-provider update/caching behavior rather than assume DNS is instantaneous.
+
+## 12. Optional rendezvous without relay
+
+A useful middle ground may exist between zero infrastructure and full TURN relay.
+
+A third party can exchange transient client/server candidates without carrying application traffic:
+
+```text
+client ---- signaling ----+
+                          | rendezvous
+server ---- signaling ----+
+
+client ================= server
+           direct data
+```
+
+Such a service consumes tiny bandwidth compared with relay hosting.
+
+OpenReach should define this as an optional provider capability separately from TURN/relay.
+
+The project itself still need not operate one at scale.
+
+## 13. Optional relay
+
+Some topology combinations cannot establish direct communication. TURN explicitly exists to provide a relayed candidate for such cases.
+
+OpenReach should support TURN and other standardized relay transports as pluggable user-selected services.
+
+The economic boundary is therefore clear:
+
+> Users who need relay bandwidth acquire relay bandwidth from a provider of their choice; OpenReach itself remains software and protocol infrastructure.
+
+## 14. Design rule
+
+> OpenReach must require no OpenReach-operated hosted infrastructure. The local endpoint plus user-controlled DNS is the baseline system. Public rendezvous, relay, and browser ingress are optional capabilities selected only when the desired reachability cannot be obtained directly.
+
+A second rule follows:
+
+> Zero hosting and universal reachability are different guarantees. OpenReach should maximize the first and accurately report when the second requires third-party public infrastructure.

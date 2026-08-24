@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use rand::RngCore;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -8,7 +8,7 @@ use std::{
 };
 use tokio::{
     io,
-    net::{lookup_host, TcpListener, TcpStream, UdpSocket},
+    net::{TcpListener, TcpStream, UdpSocket, lookup_host},
     time::timeout,
 };
 use tracing::{info, warn};
@@ -101,7 +101,11 @@ pub async fn stun_binding(server: &str, duration: Duration) -> Result<SocketAddr
         .next()
         .ok_or_else(|| anyhow!("STUN server {server} resolved to no addresses"))?;
 
-    let bind = if remote.is_ipv4() { "0.0.0.0:0" } else { "[::]:0" };
+    let bind = if remote.is_ipv4() {
+        "0.0.0.0:0"
+    } else {
+        "[::]:0"
+    };
     let socket = UdpSocket::bind(bind).await?;
     socket.connect(remote).await?;
 
@@ -233,12 +237,24 @@ pub async fn sync_cloudflare_dns(
 
     if let Some(ip) = report.public_ipv4 {
         client
-            .upsert_record(&config.zone_id, "A", &config.hostname, &ip.to_string(), config.ttl)
+            .upsert_record(
+                &config.zone_id,
+                "A",
+                &config.hostname,
+                &ip.to_string(),
+                config.ttl,
+            )
             .await?;
     }
     if let Some(ip) = report.public_ipv6 {
         client
-            .upsert_record(&config.zone_id, "AAAA", &config.hostname, &ip.to_string(), config.ttl)
+            .upsert_record(
+                &config.zone_id,
+                "AAAA",
+                &config.hostname,
+                &ip.to_string(),
+                config.ttl,
+            )
             .await?;
     }
 
@@ -255,7 +271,13 @@ pub async fn sync_cloudflare_dns(
             .unwrap_or_else(|| "none".to_owned())
     );
     client
-        .upsert_record(&config.zone_id, "TXT", &metadata_name, &metadata, config.ttl)
+        .upsert_record(
+            &config.zone_id,
+            "TXT",
+            &metadata_name,
+            &metadata,
+            config.ttl,
+        )
         .await?;
 
     Ok(DnsSyncResult {
@@ -348,7 +370,10 @@ impl CloudflareClient {
 
         let updated: CfEnvelope<serde_json::Value> = response.error_for_status()?.json().await?;
         ensure_cf_success(&updated.success, &updated.errors)?;
-        info!(record_type, name, content, "Cloudflare DNS record synchronized");
+        info!(
+            record_type,
+            name, content, "Cloudflare DNS record synchronized"
+        );
         Ok(())
     }
 }

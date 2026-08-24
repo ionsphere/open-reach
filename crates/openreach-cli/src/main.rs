@@ -9,7 +9,11 @@ use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Debug, Parser)]
-#[command(name = "openreach", version, about = "Publish local services through direct Internet reachability")]
+#[command(
+    name = "openreach",
+    version,
+    about = "Publish local services through direct Internet reachability"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,

@@ -24,6 +24,12 @@ OpenReach should then:
 
 The default installation requires no OpenReach cloud account or OpenReach-operated edge.
 
+## Runnable experiment
+
+The repository now contains a first executable Rust prototype. It probes IPv6 and STUN-observed reachability, synchronizes Cloudflare DNS dynamically, and can forward a public TCP listener to a local application.
+
+See [Production probe](docs/PROTOTYPE.md) for the current commands, Cloudflare setup, limitations, and real-network test plan.
+
 ## User-owned baseline
 
 The minimum deployment is:
@@ -109,6 +115,7 @@ OpenReach combines those lessons with ordinary DNS, persistent named services, a
 - [User model](docs/USER_MODEL.md) — the local-app + domain + DNS-authority setup flow and when optional assistance is introduced.
 - [Implementation plan](docs/IMPLEMENTATION_PLAN.md) — code workstreams, platform/build matrix, mobile support, CI, and phased milestones.
 - [Discovery and rendezvous](docs/DISCOVERY.md) — zero-hosting discovery through DNS, direct-path capabilities, and the precise cases where rendezvous/relay/ingress become necessary.
+- [Production probe](docs/PROTOTYPE.md) — current runnable prototype and real-network test instructions.
 - [WebRTC comparison](docs/WEBRTC_COMPARISON.md) — what ICE/STUN/TURN already solve and what persistent named services add.
 - [Tor comparison](docs/TOR_COMPARISON.md) — what onion services teach about outbound-only reachability, identity, rendezvous, and what OpenReach deliberately does differently.
 
